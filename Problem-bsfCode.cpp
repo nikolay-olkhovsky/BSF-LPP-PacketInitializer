@@ -60,13 +60,21 @@ void PC_bsf_Start(bool* success) {
 	PD_index = 0;
 	srand(time(0));
 
-	*success = OpenDataFiles();
-	if (*success == false)
-		return;
-	cout << "End of PC_bsf_Start!" << endl;
+	if(BSF_sv_mpiRank == BSF_sv_mpiMaster)
+	{
+		PD_packetWriter = new CMTXPacketWriter("C:/HS/", PP_NUMBER_OF_PROBLEMS);
+		PD_packetWriter->clearFolder();
+		PD_packetWriter->open();
+		PD_lppPacketWriter = new CMTXLppPacketWriter("C:/HS/", PP_NUMBER_OF_PROBLEMS);
+		PD_lppPacketWriter->open();
+	}
 }
 
 void PC_bsf_Init(bool* success) {
+	PD_currentProblem = new CProblem;
+	PD_currentProblem->dimensions = PP_N;
+	PD_currentProblem->constraints = PP_NUM_OF_RND_INEQUALITIES;
+	PD_centerObjectF = 0;
 	PD_k = 2 * PP_N + 1;
 
 	srand((unsigned)time(NULL) * (BSF_sv_mpiRank + 10));
@@ -74,34 +82,63 @@ void PC_bsf_Init(bool* success) {
 	for (int j = 0; j < PP_N; j++)
 		PD_center[j] = PP_THETA;
 
+	PD_currentProblem->c = new CArray(PP_N);
+	PD_currentProblem->hi = new CArray(PP_N);
+	PD_currentProblem->lo = new CArray(PP_N);
 	for (int j = 0; j < PP_N; j++) {
 		PD_c[j] = (PT_float_T)(PP_N - j) * PP_RHO;
 		PD_dataset[PD_index].c[j] = PD_c[j];
 		PD_centerObjectF += PD_c[j] * PP_THETA;
+
+		PD_currentProblem->c->setValue(j, PD_c[j]);
+		PD_currentProblem->hi->setValue(j, 1.0e+308);
+		PD_currentProblem->lo->setValue(j, 0.);
 	}
 
+	PD_currentProblem->A = new CMatrix(PP_NUM_OF_RND_INEQUALITIES + 2 * PP_N + 1, PP_N, 0);
+	PD_currentProblem->lpp = new CMatrix(PP_NUM_OF_RND_INEQUALITIES + 2 * PP_N + 1, PP_N, (PP_NUM_OF_RND_INEQUALITIES + 2 * PP_N + 1) * PP_N);
+	PD_currentProblem->b = new CArray(PP_NUM_OF_RND_INEQUALITIES + 2 * PP_N + 1);
 	for (int i = 0; i < PP_N; i++) {
 		for (int j = 0; j < PP_N; j++)
+		{
 			PD_A[i][j] = 0;
+			PD_currentProblem->A->setValue(i, j, 0.);
+			PD_currentProblem->lpp->setValue(i, j, 0.);
+		}
 		PD_A[i][i] = 1;
+		PD_currentProblem->A->setValue(i, i, 1.);
+		PD_currentProblem->lpp->setValue(i, i, 1.);
 		Vector_Copy(PD_A[i], PD_dataset[PD_index].A[i]);
 		PD_b[i] = PP_ALPHA;
 		PD_dataset[PD_index].b[i] = PD_b[i];
+		PD_currentProblem->b->setValue(i, PD_b[i]);
 	}
 
 	for (int j = 0; j < PP_N; j++)
+	{
 		PD_A[PP_N][j] = 1;
+		PD_currentProblem->A->setValue(PP_N, j, 1.);
+		PD_currentProblem->lpp->setValue(PP_N, j, 1.);
+	}
 	Vector_Copy(PD_A[PP_N], PD_dataset[PD_index].A[PP_N]);
 	PD_b[PP_N] = PP_ALPHA * (PP_N - 1) + PP_ALPHA / 2;
 	PD_dataset[PD_index].b[PP_N] = PD_b[PP_N];
+	PD_currentProblem->b->setValue(PP_N, PD_b[PP_N]);
 
 	for (int i = PP_N + 1; i < 2 * PP_N + 1; i++) {
 		for (int j = 0; j < PP_N; j++)
+		{
 			PD_A[i][j] = 0;
+			PD_currentProblem->A->setValue(i, j, 0.);
+			PD_currentProblem->lpp->setValue(i, j, 0.);
+		}
 		PD_A[i][i - PP_N - 1] = -1;
+		PD_currentProblem->A->setValue(i, i - PP_N - 1, -1.);
+		PD_currentProblem->lpp->setValue(i, i - PP_N - 1, -1.);
 		Vector_Copy(PD_A[i], PD_dataset[PD_index].A[i]);
 		PD_b[i] = 0;
 		PD_dataset[PD_index].b[i] = PD_b[i];
+		PD_currentProblem->b->setValue(i, PD_b[i]);
 	}
 
 	for (int i = 0; i < 2 * PP_N + 1; i++)
@@ -223,9 +260,11 @@ void PC_bsf_ProcessResults(
 		extendedReduceElem_T* extendedReduceElem;
 
 		if (PD_k == PP_NUM_OF_RND_INEQUALITIES + 2 * PP_N + 1) {
-			PD_k = 2 * PP_N + 1;
-			PC_bsf_Init(&success);
+			PD_packetWriter->addProblem(*PD_currentProblem->convertToMTX());
+			PD_lppPacketWriter->addProblem(*PD_currentProblem);
 			PD_index++;
+			*nextJob = BD_JOB_RESET;
+			return;
 		}
 
 		PD_failuresType1 += reduceResult->failuresType1;
@@ -257,19 +296,29 @@ void PC_bsf_ProcessResults(
 
 			Vector_Copy(extendedReduceElem[w].elem.a, PD_A[PD_k]);
 			Vector_Copy(PD_A[PD_k], PD_dataset[PD_index].A[PD_k]);
+			for (unsigned i = 0; i < PP_N; i++)
+			{
+				PD_currentProblem->A->setValue(PD_k, i, PD_A[PD_k][i]);
+				PD_currentProblem->lpp->setValue(PD_k, i, PD_A[PD_k][i]);
+			}
 			PD_b[PD_k] = extendedReduceElem[w].elem.b;
 			PD_dataset[PD_index].b[PD_k] = PD_b[PD_k];
 			PD_aNorm[PD_k] = extendedReduceElem[w].elem.aNorm;
+			PD_currentProblem->b->setValue(PD_k, PD_b[PD_k]);
 			PD_k++;
 
 			if (PD_k == PP_NUM_OF_RND_INEQUALITIES + 2 * PP_N + 1) {
-				PD_k = 2 * PP_N + 1;
-				PC_bsf_Init(&success);
+				PD_packetWriter->addProblem(*PD_currentProblem->convertToMTX());
+				PD_lppPacketWriter->addProblem(*PD_currentProblem);
 				PD_index++;
+				*nextJob = BD_JOB_RESET;
+				return;
 			}
 		}
 	}
 	else {
+		PD_packetWriter->close();
+		PD_lppPacketWriter->close();
 		*exit = true;
 		return;
 	}
@@ -420,124 +469,6 @@ void PC_bsf_ProblemOutput(PT_bsf_reduceElem_T* reduceResult, int reduceCounter, 
 	cout << "Failures 'Not between' = " << PD_failuresType1 << endl;
 	cout << "Failures 'Obtuse angle to objective' = " << PD_failuresType2 << endl;
 	cout << "Failures 'Similar' = " << PD_failuresType3 << endl;
-#ifdef PP_FILE_OUTPUT
-	PD_fileName.assign(PP_PATH);
-	PD_fileName += PP_LPP_FILE;
-	const char* fileName = PD_fileName.c_str();
-	FILE* stream;
-	cout << "-----------------------------------" << endl;
-	stream = fopen(fileName, "w");
-	if (stream == NULL) {
-		cout << "Failure of opening file " << fileName << "!\n";
-		return;
-	}
-	fprintf(stream, "%lld\n", PP_NUMBER_OF_PROBLEMS);
-	for (int index = 0; index < PP_NUMBER_OF_PROBLEMS; index++) {
-		fprintf(stream, "%d\t%d\t%d\n", index + 1, PP_M, PP_N);
-
-		for (int i = 0; i < PP_M; i++) {
-			for (int j = 0; j < PP_N; j++)
-				fprintf(stream, "%.2f\t", PD_dataset[index].A[i][j]);
-			fprintf(stream, "%.2f\n", PD_dataset[index].b[i]);
-		}
-		for (int j = 0; j < PP_N; j++)
-			fprintf(stream, "%.2f\t", PD_dataset[index].c[j]);
-		fprintf(stream, "\n");
-	}
-	fclose(stream);
-	cout << "LPP is saved into file '" << fileName << "'." << endl;
-	cout << "-----------------------------------" << endl;
-
-	// --------- Output to Matrix A file ---------------- //
-	cout << "-----------------------------------" << endl;
-	fprintf(PD_stream_A, "%lld\n", PP_NUMBER_OF_PROBLEMS);
-	for (int index = 0; index < PP_NUMBER_OF_PROBLEMS; index++) {
-		ConvertToMTX(index);
-		int size = PD_MTXdataset.size();
-		fprintf(PD_stream_A, "%d\t%d\t%d\t%d\n", index + 1, PP_MTX_M, PP_MTX_N, size);
-		for (int i = 0; i < size; i++)
-			fprintf(PD_stream_A, "%d\t%d\t%.1f\n", PD_MTXdataset[i].row, PD_MTXdataset[i].col, PD_MTXdataset[i].val);
-	}
-	fclose(PD_stream_A);
-	cout << "Matrix A is saved into file '" << fileName << "'." << endl;
-	cout << "-----------------------------------" << endl;
-
-	// --------- Output to Column b file ---------------- //
-	cout << "-----------------------------------" << endl;
-	fprintf(PD_stream_b, "%lld\n", PP_NUMBER_OF_PROBLEMS);
-	for (int index = 0; index < PP_NUMBER_OF_PROBLEMS; index++) {
-		fprintf(PD_stream_b, "%d\t%d\t%d\n", index + 1, PP_MTX_M, 1);
-		for (int i = 0; i < PP_M; i++)
-			if (i < PP_N + 1 || i > PP_N * 2)
-				fprintf(PD_stream_b, "%.1f\n", PD_dataset[index].b[i]);
-	}
-	fclose(PD_stream_b);
-	cout << "Column b is saved into file '" << fileName << "'." << endl;
-	cout << "-----------------------------------" << endl;
-
-	// --------- Output to Vector � file ---------------- //
-	cout << "-----------------------------------" << endl;
-	fprintf(PD_stream_c, "%lld\n", PP_NUMBER_OF_PROBLEMS);
-	for (int index = 0; index < PP_NUMBER_OF_PROBLEMS; index++) {
-		fprintf(PD_stream_c, "%d\t%d\t%d\n", index + 1, PP_MTX_N, 1);
-		for (int i = 0; i < PP_MTX_N; i++)
-			if (i < PP_N)
-				fprintf(PD_stream_c, "%.1f\n", -PD_dataset[index].c[i]);
-			else
-				fprintf(PD_stream_c, "%.1f\n", 0.);
-	}
-	fclose(PD_stream_c);
-	cout << "Vector c is saved into file '" << fileName << "'." << endl;
-	cout << "-----------------------------------" << endl;
-
-	// --------- Output to HI file ---------------- //
-	cout << "-----------------------------------" << endl;
-	fprintf(PD_stream_hi, "%lld\n", PP_NUMBER_OF_PROBLEMS);
-	for (int index = 0; index < PP_NUMBER_OF_PROBLEMS; index++) {
-		fprintf(PD_stream_hi, "%d\t%d\t%d\n", index + 1, PP_MTX_N, 1);
-		for (int i = 0; i < PP_MTX_N; i++)
-			fprintf(PD_stream_hi, "%e\n", 1e+308);
-	}
-	fclose(PD_stream_hi);
-	cout << "Values HI are saved into file '" << fileName << "'." << endl;
-	cout << "-----------------------------------" << endl;
-
-	// --------- Output to LO file ---------------- //
-	cout << "-----------------------------------" << endl;
-	fprintf(PD_stream_lo, "%lld\n", PP_NUMBER_OF_PROBLEMS);
-	for (int index = 0; index < PP_NUMBER_OF_PROBLEMS; index++) {
-		fprintf(PD_stream_lo, "%d\t%d\t%d\n", index + 1, PP_MTX_N, 1);
-		for (int i = 0; i < PP_MTX_N; i++)
-			fprintf(PD_stream_lo, "%.1f\n", 0.);
-	}
-	fclose(PD_stream_lo);
-	cout << "Values LO are saved into file '" << fileName << "'." << endl;
-	cout << "-----------------------------------" << endl;
-
-	//// --------- Output to x0 file ---------------- //
-	//PD_fileName.assign(PP_PATH);
-	//PD_fileName += PP_MTX_PREFIX;
-	//PD_fileName += PP_PROBLEM_NAME;
-	//PD_fileName += PP_MTX_POSTFIX_X0;
-	//fileName = PD_fileName.c_str();
-
-	//cout << "-----------------------------------" << endl;
-	//FILE* stream_x0 = fopen(fileName, "w");
-	//if (stream_x0 == NULL) {
-	//	cout << "Failure of opening file " << fileName << "!\n";
-	//	return;
-	//}
-	//fprintf(stream_x0, "%d\n", PP_NUMBER_OF_PROBLEMS);
-	//for (int index = 0; index < PP_NUMBER_OF_PROBLEMS; index++) {
-	//	fprintf(stream_x0, "%d\t%d\n", PP_MTX_N, 1);
-	//	for (int i = 0; i < PP_MTX_N; i++)
-	//		fprintf(stream_x0, "%.1f\n", 0.);
-	//}
-	//fclose(stream_x0);
-	//cout << "Values LO are saved into file '" << fileName << "'." << endl;
-	//cout << "-----------------------------------" << endl;
-
-#endif // PP_FILE_OUTPUT
 }
 
 // 1. Movement on Polytope
@@ -565,117 +496,6 @@ void PC_bsfAssignParameter(PT_bsf_parameter_T parameter) { PC_bsf_CopyParameter(
 void PC_bsfAssignSublistLength(int value) { BSF_sv_sublistLength = value; };
 
 //---------------------------------- Problem functions -------------------------
-inline bool OpenDataFiles() {
-	const char* mtxFile;
-	int packageSize = 0;
-
-	//--------------- Opening A ------------------
-	PD_MTX_File_A = PP_PATH;
-	PD_MTX_File_A += PP_MTX_PREFIX;
-	PD_MTX_File_A += PP_PROBLEM_NAME;
-	PD_MTX_File_A += PP_MTX_POSTFIX_A;
-	mtxFile = PD_MTX_File_A.c_str();
-	PD_stream_A = fopen(mtxFile, "w");
-
-	if (PD_stream_A == NULL) {
-		//
-		cout
-			<< "Failure of opening file '" << mtxFile << "'.\n";
-		return false;
-	}
-
-	//--------------- Opening b ------------------
-	PD_MTX_File_b = PP_PATH;
-	PD_MTX_File_b += PP_MTX_PREFIX;
-	PD_MTX_File_b += PP_PROBLEM_NAME;
-	PD_MTX_File_b += PP_MTX_POSTFIX_B;
-	mtxFile = PD_MTX_File_b.c_str();
-	PD_stream_b = fopen(mtxFile, "w");
-
-	if (PD_stream_b == NULL) {
-		//
-		cout
-			<< "Failure of opening file '" << mtxFile << "'.\n";
-		return false;
-	}
-
-	//--------------- Opening lo ------------------
-	PD_MTX_File_lo = PP_PATH;
-	PD_MTX_File_lo += PP_MTX_PREFIX;
-	PD_MTX_File_lo += PP_PROBLEM_NAME;
-	PD_MTX_File_lo += PP_MTX_POSTFIX_LO;
-	mtxFile = PD_MTX_File_lo.c_str();
-	PD_stream_lo = fopen(mtxFile, "w");
-
-	if (PD_stream_lo == NULL) {
-		//
-		cout
-			<< "Failure of opening file '" << mtxFile << "'.\n";
-		return false;
-	}
-
-	//--------------- Opening c ------------------
-	PD_MTX_File_c = PP_PATH;
-	PD_MTX_File_c += PP_MTX_PREFIX;
-	PD_MTX_File_c += PP_PROBLEM_NAME;
-	PD_MTX_File_c += PP_MTX_POSTFIX_C;
-	mtxFile = PD_MTX_File_c.c_str();
-	PD_stream_c = fopen(mtxFile, "w");
-
-	if (PD_stream_c == NULL) {
-		//
-		cout
-			<< "Failure of opening file '" << mtxFile << "'.\n";
-		return false;
-	}
-
-	//--------------- Opening hi ------------------
-	PD_MTX_File_hi = PP_PATH;
-	PD_MTX_File_hi += PP_MTX_PREFIX;
-	PD_MTX_File_hi += PP_PROBLEM_NAME;
-	PD_MTX_File_hi += PP_MTX_POSTFIX_HI;
-	mtxFile = PD_MTX_File_hi.c_str();
-	PD_stream_hi = fopen(mtxFile, "w");
-
-	if (PD_stream_hi == NULL) {
-		//
-		cout
-			<< "Failure of opening file '" << mtxFile << "'.\n";
-		return false;
-	}
-
-	return true;
-}
-
-inline bool CloseDataFiles() {
-	fclose(PD_stream_A);
-	fclose(PD_stream_b);
-	fclose(PD_stream_c);
-	fclose(PD_stream_hi);
-	fclose(PD_stream_lo);
-	if (PD_stream_x0) fclose(PD_stream_x0);
-	if (PD_stream_tr) fclose(PD_stream_tr);
-	return true;
-}
-/*
-inline bool SavePoint(PT_vector_T x, const char* filename, double elapsedTime) {
-	FILE* stream;
-
-	stream = fopen(filename, "w");
-	if (stream == NULL) {
-		if (BSF_sv_mpiRank == BSF_sv_mpiMaster)
-			cout << "Failure of opening file '" << filename << "'.\n";
-		return false;
-	}
-
-	fprintf(stream, "%c Elapsed time: %.0f\n%d %d\n", '%', elapsedTime, PD_n, 1);
-
-	for (int j = 0; j < PD_n; j++)
-		fprintf(stream, "%.14f\n", x[j]);
-
-	fclose(stream);
-	return true;
-}*/
 
 inline PT_float_T Vector_DotProduct(PT_vector_T x, PT_vector_T y) {
 	PT_float_T s = 0;
@@ -761,35 +581,8 @@ inline void Vector_Copy(PT_vector_T fromPoint, PT_vector_T toPoint) { // toPoint
 	}
 }
 
-// --------- Conversion dataset to MTX format ----------- //
-inline void ConvertToMTX(int index) {
-	int row = 0;
-	int MTXrow = 1;
-	int freeVals = 1;
-	PD_MTXdataset.clear();
-	while (row < PP_N + 1) {
-		for (int j = 0; j < PP_N; j++) {
-			PT_float_T value = PD_dataset[index].A[row][j];
-			if (value != 0.0) {
-				PD_MTXdataset.push_back({ MTXrow, j + 1, value });
-			}
-		}
-		PD_MTXdataset.push_back({ MTXrow, PP_N + freeVals, 1. });
-		freeVals++;
-		row++;
-		MTXrow++;
-	}
-	row += PP_N;
-	while (row < PP_M) {
-		for (int j = 0; j < PP_N; j++) {
-			PT_float_T value = PD_dataset[index].A[row][j];
-			if (value != 0.0) {
-				PD_MTXdataset.push_back({ MTXrow, j + 1, value });
-			}
-		}
-		PD_MTXdataset.push_back({ MTXrow, PP_N + freeVals, 1. });
-		freeVals++;
-		row++;
-		MTXrow++;
-	}
+void PrintVector(PT_vector_T x) {
+	for (int i = 0; i < PP_N; i++)
+		cout << x[i] << '\t';
+	cout << endl;
 }

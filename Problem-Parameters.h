@@ -35,7 +35,7 @@ static int PP_MTX_M;											// Number of inequalities in MTX matrix
 
 //-------------------------- Input/Outpoot Parameters ---------------------------
 #define PP_PROBLEMS_LIMIT 100000
-#define PP_FILE_OUTPUT
+//#define PP_FILE_OUTPUT
 #define PP_FILE_INI "config.ini"
 static std::string PP_PATH;
 static std::string PP_LPP_FILE;
