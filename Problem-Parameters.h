@@ -30,6 +30,7 @@ This source code has been produced with using BSF-skeleton
 static int PP_N;												// Space dimension
 static int PP_MTX_N;											// Number of columns (variables) in MTX format
 static int PP_NUM_OF_RND_INEQUALITIES;							// Number of random inequalities
+static int PP_RND_SEED;
 static int PP_M;												// Total number of inequalities
 static int PP_MTX_M;											// Number of inequalities in MTX matrix
 

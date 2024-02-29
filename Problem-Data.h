@@ -19,9 +19,14 @@ static PT_float_T PP_RHO;								// Radius of small hypersphere
 static PT_float_T PP_A_MAX;								// Maximal random value for A
 static PT_float_T PP_B_MAX;								// Maximal random value for b
 static PT_float_T PP_MAX_LIKE;							// Maximal acceptable likeness of equations (must be less then 0.7)
+static PT_float_T PP_LIKE_FACTOR;
 static PT_float_T PP_MIN_SHIFT;							// Minimal acceptable shift
 
 //========================== Problem variables ====================================
+static int PD_n;					// Current dimension
+static int PD_m;					// Current number of inequalities
+static int PD_m_predef;				// Number of predefined inequalities
+static PT_float_T PD_sqrt_n;		// Square root of n
 static PT_float_T PD_centerObjectF;	// Value of object function in the center of hypercube
 static unsigned PD_failuresType1 = 0;
 static unsigned PD_failuresType2 = 0;

@@ -8,7 +8,7 @@ This source code has been produced with using BSF-skeleton
 ==============================================================================*/
 
 //=========================== BSF Skeleton Parameters =========================
-#define PP_BSF_MAX_MPI_SIZE 500		// Defines the maximum possible number of MPI processes
+#define PP_BSF_MAX_MPI_SIZE 2		// Defines the maximum possible number of MPI processes
 #define PP_BSF_PRECISION 6			// Sets the decimal precision to be used to format floating-point values on output operations
 //#define PP_BSF_ITER_OUTPUT			// If it is defined then Iteration Output is performed
 #define PP_BSF_TRACE_COUNT 3000		// Each PP_BSF_TRACE_COUNT-th iteration to be outputted

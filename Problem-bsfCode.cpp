@@ -26,6 +26,18 @@ void PC_bsf_SetInitParameter(PT_bsf_parameter_T* parameter) {
 void PC_bsf_Start(bool* success) {
 	ini::IniFile config;
 
+	if (PP_BSF_MAX_MPI_SIZE != 2) {
+		if (BSF_sv_mpiRank == BSF_sv_mpiMaster)
+			cout << "PP_BSF_MAX_MPI_SIZE must be equal to 2!" << endl;
+		*success = false;
+		return;
+	}
+
+	if (PP_RND_SEED > 0)
+		srand(PP_RND_SEED);
+	else
+		srand((unsigned)time(NULL) * (BSF_sv_mpiRank + 10));
+
 	config.load(PP_FILE_INI);
 	PP_PATH = config["general"]["PP_PATH"].as<string>();
 	PP_PROBLEM_NAME = config["general"]["PP_PROBLEM_NAME"].as<string>();
@@ -41,31 +53,36 @@ void PC_bsf_Start(bool* success) {
 
 	PP_N = config["general"]["PP_N"].as<int>();
 	PP_NUM_OF_RND_INEQUALITIES = config["generator"]["PP_NUM_OF_RND_INEQUALITIES"].as<int>();
-	PP_MTX_N = (2 * PP_N + PP_NUM_OF_RND_INEQUALITIES + 1);
-	PP_M = (2 * PP_N + PP_NUM_OF_RND_INEQUALITIES + 1);
-	PP_MTX_M = (PP_N + PP_NUM_OF_RND_INEQUALITIES + 1);
+	PP_RND_SEED = config["generator"]["PP_RND_SEED"].as<int>();
+	PP_MTX_N = (2 * PP_N + PP_NUM_OF_RND_INEQUALITIES + 1); // ???
+	if(PP_NUM_OF_RND_INEQUALITIES == 0)
+		PP_M = (PP_N + 1);
+	else
+		PP_M = (PP_N + PP_NUM_OF_RND_INEQUALITIES);
+	PP_MTX_M = (PP_N + PP_NUM_OF_RND_INEQUALITIES + 1); // ???
 	PP_ALPHA = config["generator"]["PP_ALPHA"].as<float>();
 	
 	PP_THETA = (PP_ALPHA / 2);
 	PP_RHO = (PP_THETA / 2);
-	PP_A_MAX = (PP_ALPHA * 5);
+	PP_A_MAX = (PP_RHO / 2);
 	PP_B_MAX = (PP_ALPHA * 50);
 	PP_MAX_LIKE = config["generator"]["PP_MAX_LIKE"].as<float>();
-	PP_MIN_SHIFT = (2 * PP_RHO);
+	PP_LIKE_FACTOR = config["generator"]["PP_LIKE_FACTOR"].as<float>();
+	PP_MIN_SHIFT = (PP_RHO / 3);
 
 	PP_NUMBER_OF_PROBLEMS = config["generator"]["PP_NUMBER_OF_PROBLEMS"].as<unsigned long>();
 	PP_OUTPUT_LIMIT = config["generator"]["PP_OUTPUT_LIMIT"].as<unsigned long>();
 	PP_SETW = config["generator"]["PP_SETW"].as<unsigned long>();
 
 	PD_index = 0;
-	srand(time(0));
+	//srand(time(0));
 
 	if(BSF_sv_mpiRank == BSF_sv_mpiMaster)
 	{
-		PD_packetWriter = new CMTXPacketWriter("C:/HS/", PP_NUMBER_OF_PROBLEMS);
+		PD_packetWriter = new CMTXPacketWriter(PP_PATH.c_str(), PP_NUMBER_OF_PROBLEMS);
 		PD_packetWriter->clearFolder();
 		PD_packetWriter->open();
-		PD_lppPacketWriter = new CMTXLppPacketWriter("C:/HS/", PP_NUMBER_OF_PROBLEMS);
+		PD_lppPacketWriter = new CMTXLppPacketWriter(PP_PATH.c_str(), PP_NUMBER_OF_PROBLEMS);
 		PD_lppPacketWriter->open();
 	}
 }
@@ -73,31 +90,26 @@ void PC_bsf_Start(bool* success) {
 void PC_bsf_Init(bool* success) {
 	PD_currentProblem = new CProblem;
 	PD_currentProblem->dimensions = PP_N;
-	PD_currentProblem->constraints = PP_NUM_OF_RND_INEQUALITIES;
+	PD_currentProblem->constraints = (PP_NUM_OF_RND_INEQUALITIES < 1 ? 1 : PP_NUM_OF_RND_INEQUALITIES);
 	PD_centerObjectF = 0;
 	PD_k = 2 * PP_N + 1;
 
-	srand((unsigned)time(NULL) * (BSF_sv_mpiRank + 10));
+	//srand((unsigned)time(NULL) * (BSF_sv_mpiRank + 10));
+	PD_n = PP_N;
 
-	for (int j = 0; j < PP_N; j++)
-		PD_center[j] = PP_THETA;
-
-	PD_currentProblem->c = new CArray(PP_N);
-	PD_currentProblem->hi = new CArray(PP_N);
-	PD_currentProblem->lo = new CArray(PP_N);
-	for (int j = 0; j < PP_N; j++) {
-		PD_c[j] = (PT_float_T)(PP_N - j) * PP_RHO;
-		PD_dataset[PD_index].c[j] = PD_c[j];
-		PD_centerObjectF += PD_c[j] * PP_THETA;
-
-		PD_currentProblem->c->setValue(j, PD_c[j]);
-		PD_currentProblem->hi->setValue(j, 1.0e+308);
-		PD_currentProblem->lo->setValue(j, 0.);
+	if (PD_n < 2) {
+		if (BSF_sv_mpiRank == BSF_sv_mpiMaster)
+			cout << "PP_N must be greater than 1!" << endl;
+		*success = false;
+		return;
 	}
 
-	PD_currentProblem->A = new CMatrix(PP_NUM_OF_RND_INEQUALITIES + 2 * PP_N + 1, PP_N, 0);
-	PD_currentProblem->lpp = new CMatrix(PP_NUM_OF_RND_INEQUALITIES + 2 * PP_N + 1, PP_N, (PP_NUM_OF_RND_INEQUALITIES + 2 * PP_N + 1) * PP_N);
-	PD_currentProblem->b = new CArray(PP_NUM_OF_RND_INEQUALITIES + 2 * PP_N + 1);
+	PD_m = PD_n;
+	PD_k = PD_n;
+
+	PD_currentProblem->A = new CMatrix(PP_M, PP_N, 0);
+	PD_currentProblem->lpp = new CMatrix(PP_M + PP_N, PP_N, 0);
+	PD_currentProblem->b = new CArray(PP_M + PP_N);
 	for (int i = 0; i < PP_N; i++) {
 		for (int j = 0; j < PP_N; j++)
 		{
@@ -114,35 +126,63 @@ void PC_bsf_Init(bool* success) {
 		PD_currentProblem->b->setValue(i, PD_b[i]);
 	}
 
-	for (int j = 0; j < PP_N; j++)
+	if(PP_NUM_OF_RND_INEQUALITIES == 0)
 	{
-		PD_A[PP_N][j] = 1;
-		PD_currentProblem->A->setValue(PP_N, j, 1.);
-		PD_currentProblem->lpp->setValue(PP_N, j, 1.);
-	}
-	Vector_Copy(PD_A[PP_N], PD_dataset[PD_index].A[PP_N]);
-	PD_b[PP_N] = PP_ALPHA * (PP_N - 1) + PP_ALPHA / 2;
-	PD_dataset[PD_index].b[PP_N] = PD_b[PP_N];
-	PD_currentProblem->b->setValue(PP_N, PD_b[PP_N]);
-
-	for (int i = PP_N + 1; i < 2 * PP_N + 1; i++) {
 		for (int j = 0; j < PP_N; j++)
 		{
-			PD_A[i][j] = 0;
-			PD_currentProblem->A->setValue(i, j, 0.);
-			PD_currentProblem->lpp->setValue(i, j, 0.);
+			PD_A[PP_N][j] = 1;
+			PD_currentProblem->A->setValue(PP_N, j, 1.);
+			PD_currentProblem->lpp->setValue(PP_N, j, 1.);
 		}
-		PD_A[i][i - PP_N - 1] = -1;
-		PD_currentProblem->A->setValue(i, i - PP_N - 1, -1.);
-		PD_currentProblem->lpp->setValue(i, i - PP_N - 1, -1.);
-		Vector_Copy(PD_A[i], PD_dataset[PD_index].A[i]);
-		PD_b[i] = 0;
-		PD_dataset[PD_index].b[i] = PD_b[i];
-		PD_currentProblem->b->setValue(i, PD_b[i]);
+		Vector_Copy(PD_A[PP_N], PD_dataset[PD_index].A[PP_N]);
+		PD_b[PP_N] = PP_ALPHA * (PP_N - 1) + PP_ALPHA / 2;
+		PD_dataset[PD_index].b[PP_N] = PD_b[PP_N];
+		PD_currentProblem->b->setValue(PP_N, PD_b[PP_N]);
+		PD_m++; assert(PD_m <= PP_MTX_M);
+		PD_k++; assert(PD_k <= PP_MTX_M);
 	}
 
-	for (int i = 0; i < 2 * PP_N + 1; i++)
+	PD_m_predef = PD_m;
+/*
+	for (int i = PD_m_predef; i < PD_m_predef + PP_N; i++) {
+		for (int j = 0; j < PP_N; j++)
+		{
+			//PD_A[i][j] = 0;
+			//PD_currentProblem->A->setValue(i, j, 0.);
+			PD_currentProblem->lpp->setValue(i, j, 0.);
+		}
+		//PD_A[i][i - PP_N - 1] = -1;
+		//PD_currentProblem->A->setValue(i, i - PP_N - 1, -1.);
+		PD_currentProblem->lpp->setValue(i, i - PP_N - 1, -1.);
+		//Vector_Copy(PD_A[i], PD_dataset[PD_index].A[i]);
+		//PD_b[i] = 0;
+		//PD_dataset[PD_index].b[i] = PD_b[i];
+		PD_currentProblem->b->setValue(i, 0.);
+	}
+*/
+	for (int j = 0; j < PP_N; j++)
+		PD_center[j] = PP_ALPHA / 2;
+
+	PD_currentProblem->c = new CArray(PP_N);
+	PD_currentProblem->hi = new CArray(PP_N);
+	PD_currentProblem->lo = new CArray(PP_N);
+	for (int j = 0; j < PP_N; j++) {
+		if (PP_NUM_OF_RND_INEQUALITIES == 0) // Standart objective function
+			PD_c[j] = (PT_float_T)(PP_N - j) * PP_RHO;
+		else // Random objective function
+			PD_c[j] = (PT_float_T)(rand() % PD_n + 1);
+		PD_dataset[PD_index].c[j] = PD_c[j];
+		PD_centerObjectF += PD_c[j] * PP_THETA;
+
+		PD_currentProblem->c->setValue(j, PD_c[j]);
+		PD_currentProblem->hi->setValue(j, 1.0e+308);
+		PD_currentProblem->lo->setValue(j, 0.);
+	}
+
+	for (int i = 0; i < PD_m; i++)
 		PD_aNorm[i] = sqrt(Vector_NormSquare(PD_A[i]));
+
+	PD_sqrt_n = (PT_float_T)sqrt(PD_n);
 }
 
 void PC_bsf_SetListSize(int* listSize) {
@@ -157,50 +197,46 @@ void PC_bsf_SetMapListElem(PT_bsf_mapElem_T* elem, int i) {
 // 0. Pseudo-pojection
 void PC_bsf_MapF(PT_bsf_mapElem_T* mapElem, PT_bsf_reduceElem_T* reduceElem, int* success // 1 - reduceElem was produced successfully; 0 - otherwise
 ) {
-	PT_float_T distToCenter;
 	PT_float_T aNormSquare;
-	PT_vector_T centerProjection;
-	PT_float_T aDotProductCenter;
-	PT_float_T centerProjectionObjectiveF;
+	PT_float_T term; // computing b
+	bool failure = false;
+	bool like = false;
 	
 	reduceElem->failuresType1 = 0;
 	reduceElem->failuresType2 = 0;
-	reduceElem->failuresType3 = 0;
 	
+	if (PP_NUM_OF_RND_INEQUALITIES == 0)
+		return;
+
 	do {
-		RndFloatVector(reduceElem->a);
-		if (reduceElem->a[0] == 0) reduceElem->a[0] += (PT_float_T)0.1;
-		reduceElem->b = RndFloatValue(PP_B_MAX);
+		for (int j = 0; j < PD_n; j++) // computing a[*]
+			reduceElem->a[j] = PP_THETA + RndSign() * RndValue(PP_THETA);
+		term = PP_RHO / PD_sqrt_n + PP_ALPHA / 2 + RndValue((PP_THETA - PP_RHO) / PD_sqrt_n);
+		reduceElem->b = 0;
+		for (int j = 0; j < PD_n; j++)
+			reduceElem->b += reduceElem->a[j] * term;
 
-		aNormSquare = Vector_NormSquare(reduceElem->a);
-		reduceElem->aNorm = sqrt(aNormSquare);
-		aDotProductCenter = Vector_DotProduct(PD_center, reduceElem->a);
-		distToCenter = fabs(aDotProductCenter - reduceElem->b) / reduceElem->aNorm;
-		if (distToCenter > PP_THETA || distToCenter < PP_RHO) {
-			reduceElem->failuresType1++;
-			continue;
-		}
-
-		ProjectionOnHiperplane(PD_center, reduceElem->a, aNormSquare, aDotProductCenter, reduceElem->b, centerProjection);
-		centerProjectionObjectiveF = Vector_DotProduct(PD_c, centerProjection);
-		if (PD_centerObjectF > centerProjectionObjectiveF) {
+		failure = false;
+		for (int j = 0; j < PD_n; j++)
+			if (reduceElem->b / reduceElem->a[j] <= PP_ALPHA) { // Point (0,...,0,PP_ALPHA,0,...,0) is not feasible
+				failure = true;
+				break;
+			}
+		if (failure) {
 			reduceElem->failuresType2++;
 			continue;
 		}
 
-		if (!PointIn(PD_center, reduceElem->a, reduceElem->b)) {
-			for (int j = 0; j < PP_N; j++)
-				reduceElem->a[j] = -reduceElem->a[j];
-			reduceElem->b = -reduceElem->b;
-		}
+		aNormSquare = Vector_NormSquare(reduceElem->a);
+		reduceElem->aNorm = sqrt(aNormSquare);
 
-		bool like = false;
-		for (int i = 0; i < PP_N + 1; i++)
+		like = false;
+		for (int i = 0; i < PD_m_predef; i++)
 			if (like = Like(reduceElem->a, reduceElem->b, reduceElem->aNorm, PD_A[i], PD_b[i], PD_aNorm[i]))
 				break;
 
-		if (like) {
-			reduceElem->failuresType3++;
+		if (like) {// Hyperplane is similar to another one
+			reduceElem->failuresType1++;
 			continue;
 		}
 
@@ -226,7 +262,6 @@ void PC_bsf_ReduceF(PT_bsf_reduceElem_T* x, PT_bsf_reduceElem_T* y, PT_bsf_reduc
 	// z = x (+) y
 	z->failuresType1 = x->failuresType1 + y->failuresType1;
 	z->failuresType2 = x->failuresType2 + y->failuresType2;
-	z->failuresType3 = x->failuresType3 + y->failuresType3;
 }
 
 // 1. CheckIn
@@ -259,8 +294,16 @@ void PC_bsf_ProcessResults(
 		};
 		extendedReduceElem_T* extendedReduceElem;
 
-		if (PD_k == PP_NUM_OF_RND_INEQUALITIES + 2 * PP_N + 1) {
+		if (PD_k == PP_NUM_OF_RND_INEQUALITIES + PD_m_predef) {
 			PD_packetWriter->addProblem(*PD_currentProblem->convertToMTX());
+
+			for (int i = PP_N + PD_k; i < PP_N + PP_NUM_OF_RND_INEQUALITIES + PP_N; i++) {
+				for (int j = 0; j < PP_N; j++)
+					PD_currentProblem->lpp->setValue(i, j, 0.);
+				PD_currentProblem->lpp->setValue(i, i - PP_N - 1, -1.);
+				PD_currentProblem->b->setValue(i, 0.);
+			}
+
 			PD_lppPacketWriter->addProblem(*PD_currentProblem);
 			PD_index++;
 			*nextJob = BD_JOB_RESET;
@@ -269,7 +312,6 @@ void PC_bsf_ProcessResults(
 
 		PD_failuresType1 += reduceResult->failuresType1;
 		PD_failuresType2 += reduceResult->failuresType2;
-		PD_failuresType3 += reduceResult->failuresType3;
 
 		extendedReduceElem = (extendedReduceElem_T*)reduceResult;
 
@@ -290,7 +332,7 @@ void PC_bsf_ProcessResults(
 			}
 
 			if (like) {
-				PD_failuresType3++;
+				PD_failuresType1++;
 				continue;
 			}
 
@@ -309,6 +351,14 @@ void PC_bsf_ProcessResults(
 
 			if (PD_k == PP_NUM_OF_RND_INEQUALITIES + 2 * PP_N + 1) {
 				PD_packetWriter->addProblem(*PD_currentProblem->convertToMTX());
+
+				for (int i = PP_N + PD_k; i < PP_N + PP_NUM_OF_RND_INEQUALITIES + PP_N; i++) {
+					for (int j = 0; j < PP_N; j++)
+						PD_currentProblem->lpp->setValue(i, j, 0.);
+					PD_currentProblem->lpp->setValue(i, i - PP_N - 1, -1.);
+					PD_currentProblem->b->setValue(i, 0.);
+				}
+
 				PD_lppPacketWriter->addProblem(*PD_currentProblem);
 				PD_index++;
 				*nextJob = BD_JOB_RESET;
@@ -365,7 +415,7 @@ void PC_bsf_JobDispatcher(
 }
 
 void PC_bsf_ParametersOutput(PT_bsf_parameter_T parameter) {
-	cout << "=================================================== Problem parameters ====================================================" << endl;
+	cout << "-------------------------------------PC_bsf_ParametersOutput-----------------------------------" << endl;
 	cout << "Number of Workers: " << BSF_sv_numOfWorkers << endl;
 #ifdef PP_BSF_OMP
 #ifdef PP_BSF_NUM_THREADS
@@ -376,21 +426,22 @@ void PC_bsf_ParametersOutput(PT_bsf_parameter_T parameter) {
 #else
 	cout << "OpenMP is turned off!" << endl;
 #endif // PP_BSF_OMP
-	cout << "Dimension: n = " << PP_N << endl;
-	cout << "Number of Random Inegualities: " << PP_NUM_OF_RND_INEQUALITIES << endl;
+	cout << "Dimension n = " << PP_N << endl;
+	cout << "Number of random inequalities: " << PP_NUM_OF_RND_INEQUALITIES << endl;
 	cout << "Length of hypercube edge ALPHA = " << PP_ALPHA << endl;
 	cout << "Radius of large hypersphere RHO = " << PP_THETA << endl;
 	cout << "Radius of small hypersphere THETA = " << PP_RHO << endl;
-	cout << "Maximal acceptable likeness of equations MAX_LIKE = " << PP_MAX_LIKE << endl;
+	cout << "Maximal acceptable likeness of equations MAX_LIKE = " << PP_LIKE_FACTOR << endl;
 	cout << "Minimal acceptable shift MIN_SHIFT = " << PP_MIN_SHIFT << endl;
 #ifdef PP_MATRIX_OUTPUT
 	cout << "------- Support inequalities -------" << endl;
-	for (int i = 0; i < 2 * PP_N + 1; i++) {
+	for (int i = 0; i < PD_m; i++) {
 		cout << i << ")";
-		for (int j = 0; j < PP_N; j++)
-			cout << setw(PP_SETW) << PD_A[i][j];
-		cout << "\t<=" << setw(PP_SETW) << PD_b[i] << endl;
+		for (int j = 0; j < PD_n; j++)
+			cout << setw(PP_SETW) << PD_A[i][j] << "\t";
+		cout << "\t<=\t" << setw(PP_SETW) << PD_b[i] << endl;
 	}
+	cout << "n = " << PD_n << "\tm = " << PD_m << "\tk = " << PD_k << endl;
 #endif // PP_MATRIX_OUTPUT
 
 	cout << "Objective Function:\t";
@@ -404,19 +455,19 @@ void PC_bsf_CopyParameter(PT_bsf_parameter_T parameterIn, PT_bsf_parameter_T* pa
 
 // 0. Start
 void PC_bsf_IterOutput(PT_bsf_reduceElem_T* reduceResult, int reduceCounter, PT_bsf_parameter_T parameter,
-	double elapsedTime, int nextJob) {
-	static int k = 2 * PP_N + 1;
+	double elapsedTime, int jobCase) {	// For Job 0
+	static int k = PD_m;
 	cout << "------------------ " << BSF_sv_iterCounter << " ------------------" << endl;
 
 	if (PD_k > k) {
 		cout << PD_k - 1 << ")\t";
-		for (int j = 0; j < PF_MIN(PP_OUTPUT_LIMIT, PP_N); j++) cout << setw(PP_SETW) << PD_A[PD_k - 1][j] << "\t";
-		cout << (PP_OUTPUT_LIMIT < PP_N ? "	..." : "") << "<=\t" << setw(PP_SETW) << PD_b[PD_k - 1] << endl;
+		for (int j = 0; j < PF_MIN(PP_OUTPUT_LIMIT, PD_n); j++) cout << setw(PP_SETW) << PD_A[PD_k - 1][j] << "\t";
+		cout << (PP_OUTPUT_LIMIT < PD_n ? "	..." : "") << "<=\t" << setw(PP_SETW) << PD_b[PD_k - 1] << endl;
 		k = PD_k;
 	}
-	cout << "Failures 'Not between' = " << PD_failuresType1 << endl;
-	cout << "Failures 'Obtuse angle to objective' = " << PD_failuresType2 << endl;
-	cout << "Failures 'Similar' = " << PD_failuresType3 << endl;
+	cout << "Failures 'Similar' = " << PD_failuresType1 << endl;
+	cout << "Failures '(0," << PP_ALPHA << ",0)' = " << PD_failuresType2 << endl;
+	cout << "-------------------------------------" << endl;
 }
 
 // 1. Movement on Polytope
@@ -459,16 +510,15 @@ void PC_bsf_ProblemOutput(PT_bsf_reduceElem_T* reduceResult, int reduceCounter, 
 	cout << "Iterations: " << BSF_sv_iterCounter << endl;
 #ifdef PP_MATRIX_OUTPUT
 	cout << "------- Random inequalities -------" << endl;
-	for (int i = 2 * PP_N + 1; i < 2 * PP_N + 1 + PP_NUM_OF_RND_INEQUALITIES; i++) {
+	for (int i = PD_m_predef; i < PD_m; i++) {
 		cout << i << ")\t";
-		for (int j = 0; j < PF_MIN(PP_OUTPUT_LIMIT, PP_N); j++) cout << setw(PP_SETW) << PD_A[i][j] << "\t";
-		cout << (PP_OUTPUT_LIMIT < PP_N ? "	..." : "") << "<=\t" << setw(PP_SETW) << PD_b[i] << endl;
+		for (int j = 0; j < PF_MIN(PP_OUTPUT_LIMIT, PD_n); j++) cout << setw(PP_SETW) << PD_A[i][j] << "\t";
+		cout << (PP_OUTPUT_LIMIT < PD_n ? "	..." : "") << "<=\t" << setw(PP_SETW) << PD_b[i] << endl;
 	}
 	cout << "-----------------------------------" << endl;
 #endif // PP_MATRIX_OUTPUT
-	cout << "Failures 'Not between' = " << PD_failuresType1 << endl;
-	cout << "Failures 'Obtuse angle to objective' = " << PD_failuresType2 << endl;
-	cout << "Failures 'Similar' = " << PD_failuresType3 << endl;
+	cout << "Failures 'Similar' = " << PD_failuresType1 << endl;
+	cout << "Failures '(0," << PP_ALPHA << ",0)' = " << PD_failuresType2 << endl;
 }
 
 // 1. Movement on Polytope
@@ -497,28 +547,22 @@ void PC_bsfAssignSublistLength(int value) { BSF_sv_sublistLength = value; };
 
 //---------------------------------- Problem functions -------------------------
 
-inline PT_float_T Vector_DotProduct(PT_vector_T x, PT_vector_T y) {
-	PT_float_T s = 0;
-	for (int j = 0; j < PP_N; j++)
-		s += x[j] * y[j];
-	return s;
-}
-
+//----------------------------- User functions -----------------------------
 inline PT_float_T Vector_NormSquare(PT_vector_T x) {
 	PT_float_T s = 0;
 
-	for (int j = 0; j < PP_N; j++)
+	for (int j = 0; j < PD_n; j++)
 		s += x[j] * x[j];
 	return s;
 }
 
-inline void RndFloatVector(PT_vector_T vector) {
-	for (int i = 0; i < PP_N; i++)
-		vector[i] = RndFloatValue(PP_A_MAX);
+inline void RndVector(PT_vector_T vector) {
+	for (int j = 0; j < PD_n; j++)
+		vector[j] = RndValue(PP_A_MAX);
 }
 
-inline PT_float_T RndFloatValue(PT_float_T rndMax) {
-	return RndSign() * (((PT_float_T)rand() / ((PT_float_T)RAND_MAX + 1)) * rndMax);
+inline PT_float_T RndValue(PT_float_T rndMax) { // rnd >= 0
+	return ((PT_float_T)rand() / ((PT_float_T)RAND_MAX + 1)) * rndMax;
 }
 
 inline int RndSign() {
@@ -526,13 +570,6 @@ inline int RndSign() {
 	if (res == 0)
 		res = -1;
 	return res;
-}
-
-inline bool PointIn(PT_vector_T x, PT_vector_T a, PT_float_T b) { // If the point belonges to the Halfspace <a,x> <= b
-	if (Vector_DotProduct(a, x) > b)
-		return false;
-	else
-		return true;
 }
 
 inline bool Like(PT_vector_T a1, PT_float_T b1, PT_float_T a1Norm, PT_vector_T a2, PT_float_T b2, PT_float_T a2Norm) {
@@ -545,44 +582,26 @@ inline bool Like(PT_vector_T a1, PT_float_T b1, PT_float_T a1Norm, PT_vector_T a
 	Vector_Subtraction(e1, e2, e1_e2);
 	like = sqrt(Vector_NormSquare(e1_e2));
 	shift = fabs(b1 / a1Norm - b2 / a2Norm);
-	if (like < PP_MAX_LIKE)
+	if (like < PP_LIKE_FACTOR)
 		if (shift < PP_MIN_SHIFT)
 			return true;
 	return false;
 }
 
-inline void ProjectionOnHiperplane(PT_vector_T x, PT_vector_T a, PT_float_T aNormSquare, PT_float_T aDotProductx, PT_float_T b, PT_vector_T projection) {
-	PT_float_T fac = (aDotProductx - b) / aNormSquare;
-	for (int j = 0; j < PP_N; j++)
-		projection[j] = x[j] - fac * a[j];
-}
-
 inline void Vector_MultiplyByNumber(PT_vector_T x, PT_float_T r, PT_vector_T y) {  // y = r*x
-	for (int j = 0; j < PP_N; j++) {
+	for (int j = 0; j < PD_n; j++) {
 		y[j] = x[j] * r;
 	}
 }
 
 inline void Vector_Subtraction(PT_vector_T x, PT_vector_T y, PT_vector_T z) {  // z = x - y
-	for (int j = 0; j < PP_N; j++) {
+	for (int j = 0; j < PD_n; j++) {
 		z[j] = x[j] - y[j];
 	}
 }
 
-inline void Vector_Addition(PT_vector_T x, PT_vector_T y, PT_vector_T z) {  // z = x + y
-	for (int j = 0; j < PP_N; j++) {
-		z[j] = x[j] + y[j];
-	}
-}
-
 inline void Vector_Copy(PT_vector_T fromPoint, PT_vector_T toPoint) { // toPoint = fromPoint
-	for (int j = 0; j < PP_N; j++) {
+	for (int j = 0; j < PD_n; j++) {
 		toPoint[j] = fromPoint[j];
 	}
-}
-
-void PrintVector(PT_vector_T x) {
-	for (int i = 0; i < PP_N; i++)
-		cout << x[i] << '\t';
-	cout << endl;
 }
