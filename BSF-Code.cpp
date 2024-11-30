@@ -1,10 +1,10 @@
 /*==============================================================================
-Project: LiFe
-Theme: Apex Method
+Project: LiFe - New Linear Programming Solvers - New Linear Programming Solvers
+Theme: Packet LPP starting point Initializer
 Module: BSF-Code.cpp (Problem Independent Code)
 Prefix: BC
-Author: Leonid B. Sokolinsky
-This source code is a part of BSF Skeleton (https://github.com/leonid-sokolinsky/BSF-skeleton)
+Author: Nikolay A. Olkhovsky
+This source code has been produced with using BSF-skeleton (https://github.com/leonid-sokolinsky/BSF-skeleton)
 ==============================================================================*/
 #include "BSF-Data.h"				// Problem Independent Variables & Data Structures 
 #include "BSF-Forwards.h"			// Problem Independent Function Forwards

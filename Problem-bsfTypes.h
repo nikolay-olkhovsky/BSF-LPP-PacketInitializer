@@ -1,10 +1,10 @@
 /*==============================================================================
-Project: LiFe
-Theme: Packet LPP Generator
+Project: LiFe - New Linear Programming Solvers
+Theme: Packet LPP starting point Initializer
 Module: Problem-bsfTypes.h (Predefined Problem-depended LBSF Types)
 Prefix: PT_bsf
 Author: Nikolay A. Olkhovsky
-This source code is a part of BSF Skeleton
+This source code has been produced with using BSF-skeleton
 ==============================================================================*/
 #pragma once
 #include "Problem-Types.h"		// Problem Types 

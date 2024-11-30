@@ -1,17 +1,17 @@
 /*==============================================================================
-Project: LiFe
-Theme: Packet LPP Generator
+Project: LiFe - New Linear Programming Solvers
+Theme: Packet LPP starting point Initializer
 Module: Problem-Parameters.h (Problem Parameters)
 Prefix: PP
 Author: Nikolay A. Olkhovsky
-This source code has been produced with using BSF-skeleton
+This source code has been produced with using BSF-skeleton (https://github.com/leonid-sokolinsky/BSF-skeleton)
 ==============================================================================*/
 //=========================== Problem Parameters =========================
-#define PP_MAX_RND_INEQUALITIES	40
-#define PP_MAX_N				20
-#define PP_MAX_MTX_N			81
-#define PP_MAX_M				81
-#define PP_MAX_MTX_M			61
+#define PP_MAX_RND_INEQUALITIES	400
+#define PP_MAX_N				400
+#define PP_MAX_MTX_N			800
+#define PP_MAX_M				400
+#define PP_MAX_MTX_M			800
 /*
 #define PP_N 3												// Space dimension
 #define PP_MTX_N (2*PP_N + PP_NUM_OF_RND_INEQUALITIES + 1)	// Number of columns (variables) in MTX format
@@ -35,8 +35,9 @@ static int PP_M;												// Total number of inequalities
 static int PP_MTX_M;											// Number of inequalities in MTX matrix
 
 //-------------------------- Input/Outpoot Parameters ---------------------------
-#define PP_PROBLEMS_LIMIT 100000
+#define PP_PROBLEMS_LIMIT 100
 //#define PP_FILE_OUTPUT
+#define PP_DATABASE_OUTPUT
 #define PP_FILE_INI "config.ini"
 static std::string PP_PATH;
 static std::string PP_LPP_FILE;

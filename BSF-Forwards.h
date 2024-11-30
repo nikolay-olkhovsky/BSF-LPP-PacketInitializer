@@ -1,9 +1,9 @@
 /*==============================================================================
-Project: LiFe
-Theme: Apex Method
+Project: LiFe - New Linear Programming Solvers
+Theme: Packet LPP starting point Initializer
 Module: BSF-Forwards.h (Problem Independent Function Forwards)
-Author: Leonid B. Sokolinsky 
-This source code is a part of BSF Skeleton (https://github.com/leonid-sokolinsky/BSF-skeleton)
+Author: Nikolay A. Olkhovsky 
+This source code has been produced with using BSF-skeleton (https://github.com/leonid-sokolinsky/BSF-skeleton)
 ==============================================================================*/
 #include "BSF-Types.h"					// Problem Independent Types 
 

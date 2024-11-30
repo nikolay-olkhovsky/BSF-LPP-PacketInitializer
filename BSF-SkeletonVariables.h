@@ -1,10 +1,10 @@
 /*==============================================================================
-Project: LiFe
-Theme: Apex Method
+Project: LiFe - New Linear Programming Solvers
+Theme: Packet LPP starting point Initializer
 Module: BSF-SceletonVariables.h (Skeleton Variables)
 Prefix: BSF_sv
-Author: Leonid B. Sokolinsky
-This source code is a part of BSF Skeleton (https://github.com/leonid-sokolinsky/BSF-skeleton)
+Author: Nikolay A. Olkhovsky
+This source code has been produced with using BSF-skeleton (https://github.com/leonid-sokolinsky/BSF-skeleton)
 ==============================================================================*/
 static int BSF_sv_addressOffset;			// Contains the number of the first element of the map-sublist scheduled to the current worker process.
 static int BSF_sv_iterCounter;				// Contains the number of iterations performed so far.
