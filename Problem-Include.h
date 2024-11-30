@@ -1,6 +1,6 @@
 /*==============================================================================
 Project: LiFe - New Linear Programming Solvers
-Theme: Packet LPP starting point Initializer
+Theme: Packet LPP Generator
 Module: Problem-Include.h ("Include" Files of the Problem)
 Author: Nikolay A. Olkhovsky
 This source code has been produced with using BSF-skeleton (https://github.com/leonid-sokolinsky/BSF-skeleton)

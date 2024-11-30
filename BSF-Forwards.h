@@ -1,6 +1,6 @@
 /*==============================================================================
 Project: LiFe - New Linear Programming Solvers
-Theme: Packet LPP starting point Initializer
+Theme: Packet LPP Generator
 Module: BSF-Forwards.h (Problem Independent Function Forwards)
 Author: Nikolay A. Olkhovsky 
 This source code has been produced with using BSF-skeleton (https://github.com/leonid-sokolinsky/BSF-skeleton)

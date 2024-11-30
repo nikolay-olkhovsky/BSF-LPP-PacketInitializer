@@ -1,6 +1,6 @@
 /*==============================================================================
 Project: LiFe - New Linear Programming Solvers - New Linear Programming Solvers
-Theme: Packet LPP starting point Initializer
+Theme: Packet LPP Generator
 Module: BSF-Code.cpp (Problem Independent Code)
 Prefix: BC
 Author: Nikolay A. Olkhovsky

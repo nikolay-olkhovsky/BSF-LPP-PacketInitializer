@@ -1,6 +1,6 @@
 /*==============================================================================
 Project: LiFe - New Linear Programming Solvers
-Theme: Packet LPP starting point Initializer
+Theme: Packet LPP Generator
 Module: BSF-Data.h (Problem Independent Variables & Data Structures)
 Prefix: BD
 Author: Nikolay A. Olkhovsky

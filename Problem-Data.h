@@ -1,6 +1,6 @@
 /*==============================================================================
 Project: LiFe - New Linear Programming Solvers
-Theme: Packet LPP starting point Initializer
+Theme: Packet LPP Generator
 Module: Problem-Data.h (Problem Data)
 Prefix: PD
 Author: Nikolay A. Olkhovsky

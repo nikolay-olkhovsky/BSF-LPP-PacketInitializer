@@ -1,6 +1,6 @@
 /*==============================================================================
 Project: LiFe - New Linear Programming Solvers
-Theme: Packet LPP starting point Initializer
+Theme: Packet LPP Generator
 Module: Problem-Parameters.h (Problem Parameters)
 Prefix: PP
 Author: Nikolay A. Olkhovsky

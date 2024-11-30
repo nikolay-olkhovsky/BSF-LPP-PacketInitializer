@@ -1,6 +1,6 @@
 /*==============================================================================
 Project: LiFe - New Linear Programming Solvers
-Theme: Packet LPP starting point Initializer
+Theme: Packet LPP Generator
 Module: Problem-bsfParameters.h (LBSF-skeleton Parameters)
 Prefix: PP_BSF
 Author: Nikolay A. Olkhovsky
